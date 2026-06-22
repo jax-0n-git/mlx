@@ -56,13 +56,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-linux
+        id: setup
         with:
           python-version: ${{ matrix.python_version }}
           use-ccache: false
-      - uses: ./.github/actions/build-linux-release
+      - uses: ./.github/actions/build-wheel
         with:
+          cmake-args: ${{ steps.setup.outputs.cmake-args }}
           build-backend: ${{ matrix.python_version == '3.10' }}
-          arch: ${{ matrix.arch }}
       - name: Upload MLX artifacts
         uses: actions/upload-artifact@v7
         with:
@@ -137,13 +138,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-linux
+        id: setup
         with:
           toolkit: ${{ matrix.toolkit }}
           ccache-key: 'ccache-release'
-      - name: Build Python package
-        uses: ./.github/actions/build-cuda-release
+      - uses: ./.github/actions/build-backend-wheel
         with:
-          arch: ${{ matrix.arch }}
+          cmake-args: ${{ steps.setup.outputs.cmake-args }}
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
@@ -151,6 +152,28 @@ jobs:
           name: mlx-${{ matrix.toolkit }}-${{ matrix.arch }}
           path: wheelhouse/mlx_cuda_*.whl
           if-no-files-found: error
+
+  build_windows_release:
+    if: github.repository == 'ml-explore/mlx'
+    strategy:
+      matrix:
+        arch: ['x86_64']
+        toolkit: ['cpu', 'cuda-12.9', 'cuda-13.0']
+    runs-on: windows-2022
+    env:
+      PYPI_RELEASE: 1
+      DEV_RELEASE: ${{ inputs.dev_release && 1 || 0 }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-windows
+        id: setup
+        with:
+          toolkit: ${{ matrix.toolkit }}
+          ccache-key: 'ccache-release'
+      - uses: ./.github/actions/build-wheel
+        with:
+          cmake-args: ${{ steps.setup.outputs.cmake-args }}
+      - run: ls -lh wheelhouse
 
   pypi-publish:
     name: Upload release to PyPI

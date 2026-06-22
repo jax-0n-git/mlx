@@ -24,21 +24,6 @@ jobs:
       - uses: pre-commit/action@v3.0.1
 
   linux_build_and_test:
-    name: Linux (cpu, ${{ matrix.arch }})
-    needs: check_lint
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: ['x86_64', 'aarch64']
-    runs-on: ${{ matrix.arch == 'x86_64' && 'ubuntu-22.04' || 'ubuntu-22.04-arm' }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-linux
-      - uses: ./.github/actions/build-linux
-      - uses: ./.github/actions/test-linux
-      - run: df -h
-
-  cuda_build_and_test:
     name: Linux (${{ matrix.toolkit }}, ${{ matrix.arch }})
     if: github.repository == 'ml-explore/mlx'
     needs: check_lint
@@ -46,20 +31,26 @@ jobs:
       fail-fast: false
       matrix:
         arch: ['x86_64', 'aarch64']
-        toolkit: ['cuda-12.6', 'cuda-12.9']
-    runs-on: ${{ matrix.arch == 'x86_64' && 'gpu-t4-4-core' || 'ubuntu-22.04-arm' }}
+        toolkit: ['cpu', 'cuda-12.6', 'cuda-12.9']
+    runs-on: |-
+      ${{ case(matrix.arch == 'aarch64', 'ubuntu-22.04-arm',
+               matrix.toolkit == 'cpu', 'ubuntu-22.04',
+               'gpu-t4-4-core')
+      }}
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-linux
+        id: setup
         with:
           toolkit: ${{ matrix.toolkit }}
       - uses: ./.github/actions/build-linux
         with:
-          toolkit: ${{ matrix.toolkit }}
+          cmake-args: ${{ steps.setup.outputs.cmake-args }}
       - uses: ./.github/actions/test-linux
         if: matrix.arch == 'x86_64'
         with:
-          has-gpu: true
+          has-gpu: ${{ matrix.toolkit != 'cpu' }}
+      - run: df -h
 
   mac_build_and_test:
     name: macOS (${{ matrix.macos-target }})
@@ -77,14 +68,26 @@ jobs:
       - uses: ./.github/actions/build-macos
 
   windows_build_and_test:
-    name: Windows (cpu, x86_64)
+    name: Windows (${{ matrix.toolkit }}, ${{ matrix.arch }})
+    if: github.repository == 'ml-explore/mlx'
     needs: check_lint
-    runs-on: windows-2025
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ['x86_64']
+        toolkit: ['cpu', 'cuda-12.9', 'cuda-13.0']
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup-windows
+        id: setup
+        with:
+          toolkit: ${{ matrix.toolkit }}
       - uses: ./.github/actions/build-windows
+        with:
+          cmake-args: ${{ steps.setup.outputs.cmake-args }}
       - uses: ./.github/actions/test-windows
+        if: matrix.toolkit == 'cpu'
 
   build_documentation:
     name: Build Documentation

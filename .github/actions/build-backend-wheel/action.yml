@@ -1,0 +1,42 @@
+name: 'Build backend wheel'
+description: 'Build the backend-only Python wheel for release on Linux and Windows'
+
+inputs:
+  cmake-args:
+    description: 'The args for generating CMake project'
+    required: true
+  arch:
+    description: 'Platform architecture tag'
+    required: false
+    default: |-
+      ${{ case(runner.arch == 'x64', 'x86_64',
+               runner.arch == 'x86', 'i686',
+               runner.arch == 'arm', 'armv7l',
+               runner.arch == 'arm64', 'aarch64',
+               'unknown')
+      }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Build package
+      shell: bash
+      env:
+        CMAKE_ARGS: ${{ inputs.cmake-args }}
+      run: |
+        uv pip install "build<=1.4.2" setuptools
+        python setup.py clean --all
+        MLX_BUILD_STAGE=2 python -m build -w
+
+    - name: Post process
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        uv pip install auditwheel patchelf
+        auditwheel repair dist/mlx_cuda*.whl \
+          --plat manylinux_2_35_${{ inputs.arch }} \
+          --exclude libcublas* \
+          --exclude libcuda* \
+          --exclude libcudnn* \
+          --exclude libnccl* \
+          --exclude libnvrtc*

@@ -1,0 +1,56 @@
+name: 'Build wheel'
+description: 'Build the Python wheel for release on Linux and Windows'
+
+inputs:
+  cmake-args:
+    description: 'The args for generating CMake project'
+    required: true
+  arch:
+    description: 'Platform architecture tag'
+    required: false
+    default: |-
+      ${{ case(runner.arch == 'x64', 'x86_64',
+               runner.arch == 'x86', 'i686',
+               runner.arch == 'arm', 'armv7l',
+               runner.arch == 'arm64', 'aarch64',
+               'unknown')
+      }}
+  build-backend:
+    description: 'Build the backend mlx-cpu package'
+    type: boolean
+    required: false
+    default: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Build frontend package
+      shell: bash
+      run: |
+        uv pip install "build<=1.4.2" setuptools
+        python setup.py clean --all
+        MLX_BUILD_STAGE=1 python -m build -w
+
+    - name: Post process
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        uv pip install auditwheel patchelf
+        auditwheel repair dist/mlx-*.whl \
+          --plat manylinux_2_35_${{ inputs.arch }} \
+          --exclude libmlx.so* \
+          --only-plat
+
+    - name: Build backend package
+      if: inputs.build-backend
+      shell: bash
+      run: |
+        python setup.py clean --all
+        MLX_BUILD_STAGE=2 python -m build -w
+
+    - name: Post process
+      if: inputs.build-backend && runner.os == 'Linux'
+      shell: bash
+      run: |
+        auditwheel repair dist/mlx_cpu*.whl \
+          --plat manylinux_2_35_${{ inputs.arch }}

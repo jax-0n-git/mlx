@@ -1,26 +1,22 @@
 name: 'Build on Windows'
+description: 'Build C++ and Python binaries for testing on Windows'
+
+inputs:
+  cmake-args:
+    description: 'The args for generating CMake project'
+    required: true
 
 runs:
   using: 'composite'
   steps:
     - name: Install Python package
-      id: python-build
       shell: cmd
       env:
-        # For MSVC, Ninja/Release is the only config supported by ccache.
-        CMAKE_ARGS: >-
-          -G Ninja
-          -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_C_COMPILER=cl
-          -DCMAKE_CXX_COMPILER=cl
-          -DCMAKE_RC_COMPILER=rc
-      run: |
-        uv pip install ".[dev]" -v
-        :: Pass the CMAKE_ARGS to following steps.
-        >>%GITHUB_OUTPUT% ECHO CMAKE_ARGS=%CMAKE_ARGS%
+        CMAKE_ARGS: ${{ inputs.cmake-args }}
+      run: uv pip install ".[dev]" -v
 
     - name: Build CPP only
       shell: cmd
       run: |
-        cmake . -B build ${{ steps.python-build.outputs.CMAKE_ARGS }}
+        cmake . -B build ${{ inputs.cmake-args }}
         cmake --build build -j %NUMBER_OF_PROCESSORS%

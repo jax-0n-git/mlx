@@ -11,9 +11,8 @@ runs:
       shell: bash
       run: |
         sudo apt-get install -y doxygen
-        source .venv/bin/activate
-        pip install -r docs/requirements.txt
-        pip install . -v
+        uv pip install -r docs/requirements.txt
+        uv pip install . -v
   
     - name: Build documentation
       shell: bash
