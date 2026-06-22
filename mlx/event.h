@@ -11,6 +11,9 @@ namespace mlx::core {
 
 class Event {
  public:
+  // TODO: Use std::atomic<std::shared_ptr> when it gets supported in Xcode.
+  using Error = std::shared_ptr<std::string>;
+
   Event() {};
   explicit Event(Stream stream);
 
@@ -25,6 +28,21 @@ class Event {
 
   // Check if the event has been signaled at its current value
   bool is_signaled() const;
+
+  // Associate an error to the event
+  void set_error(Error err) {
+    std::atomic_store(&error(), std::move(err));
+  }
+
+  // Throw and clear the associated error
+  void check_error() {
+    auto err = std::atomic_exchange(&error(), {});
+    if (err) {
+      throw std::runtime_error(*err);
+    }
+  }
+
+  Error& error();
 
   // Check if the event is valid
   bool valid() const {
@@ -47,10 +65,16 @@ class Event {
     return stream_;
   }
 
+  template <typename T>
+  auto& cast() const {
+    return *static_cast<T*>(event_.get());
+  }
+
  private:
   // Default constructed stream should never be used
   // since the event is not yet valid
   Stream stream_{0, Device::cpu};
+
   std::shared_ptr<void> event_{nullptr};
   uint64_t value_{0};
 };

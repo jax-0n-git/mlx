@@ -60,6 +60,43 @@ void Scheduler::enqueue(Stream s, std::function<void()> task) {
   st->enqueue(std::move(task));
 }
 
+void Scheduler::enqueue_event(
+    Stream s,
+    Event event,
+    std::function<void(Event&)> task) {
+  assert(s.device == Device::cpu);
+  // Keep a copy of the event until it is processed.
+  decltype(events_)::mapped_type::iterator iter;
+  {
+    std::unique_lock lock(events_mtx_);
+    auto& list = events_[s.index];
+    iter = list.insert(list.end(), std::move(event));
+  }
+  enqueue(s, [this, s, iter, task = std::move(task)]() {
+    task(*iter);
+    {
+      std::unique_lock lock(events_mtx_);
+      auto& list = events_[s.index];
+      auto err = iter->error();
+      list.erase(iter);
+      // Poison all pending events if there was an error.
+      if (err) {
+        for (auto& event : list) {
+          event.set_error(err);
+        }
+      }
+    }
+  });
+}
+
+void Scheduler::set_error(Stream s, std::shared_ptr<std::string> error) {
+  assert(s.device == Device::cpu);
+  std::unique_lock lock(events_mtx_);
+  for (auto& event : events_[s.index]) {
+    event.set_error(error);
+  }
+}
+
 // Leak the scheduler singleton on all platforms. During static destruction,
 // worker threads may still be executing JIT-compiled code that has been
 // unmapped, causing SIGSEGV (macOS/Linux) or join() deadlocks (Windows/MSVC
